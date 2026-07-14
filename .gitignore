@@ -17,3 +17,4 @@ heaptrack.*
 /cmake-build*
 .cache
 .qmlls.ini
+.ccls-cache
