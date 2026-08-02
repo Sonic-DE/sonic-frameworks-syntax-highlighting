@@ -71,7 +71,7 @@ if(Python_FOUND)
         string(REPLACE "\r" "" out_xmls ${out_xmls})
         string(REPLACE "\n" ";" out_xmls ${out_xmls})
         file(TO_CMAKE_PATH "${out_xmls}" out_xmls)
-        list(TRANSFORM out_xmls REPLACE ${jinja_outdir} ${jinja_indir} OUTPUT_VARIABLE in_xmls)
+        string(REPLACE "${jinja_outdir}" "${jinja_indir}" in_xmls "${out_xmls}")
         list(TRANSFORM in_xmls REPLACE ${jinja_prefix} "")
 
         add_custom_target(
