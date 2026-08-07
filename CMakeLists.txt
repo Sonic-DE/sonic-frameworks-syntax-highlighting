@@ -5,7 +5,7 @@ project(KSyntaxHighlighting VERSION ${KF_VERSION})
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(ECM 6.28.0 REQUIRED NO_MODULE)
+find_package(ECM 6.29.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
