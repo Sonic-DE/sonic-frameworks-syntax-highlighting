@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.29)
 
-set(KF_VERSION "6.29.0")
+set(KF_VERSION "6.30.0")
 project(KSyntaxHighlighting VERSION ${KF_VERSION})
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(ECM 6.29.0 REQUIRED NO_MODULE)
+find_package(ECM 6.30.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
