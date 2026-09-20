@@ -8,6 +8,14 @@ configure_file(test-config.h.in ${CMAKE_CURRENT_BINARY_DIR}/test-config.h)
 #
 configure_file(update-reference-data.sh.in ${CMAKE_CURRENT_BINARY_DIR}/update-reference-data.sh)
 
+add_test(NAME indexer_popcount_test
+    COMMAND ${CMAKE_COMMAND}
+        -DINDEXER=$<TARGET_FILE:katehighlightingindexer>
+        -DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/../data/schema/language.xsd
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/indexer-popcount
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/indexer_popcount_test.cmake
+)
+
 #
 # unit tests
 # always executed during testing, required to pass, else stuff is in a bad shape ;=)
