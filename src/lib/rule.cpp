@@ -175,7 +175,7 @@ static Rule::Ptr createRule(DefinitionData &def, HighlightingContext &hctx, cons
     case Type::Int:
         return std::make_unique<Int>(def, ruleData.data.detectInt);
     case Type::Keyword:
-        return KeywordListRule::create(hctx, def, ruleData.data.keyword, lookupContextName);
+        return KeywordListRule::create(def, ruleData.data.keyword, lookupContextName);
     case Type::LineContinue:
         return std::make_unique<LineContinue>(ruleData.data.lineContinue);
     case Type::RangeDetect:
@@ -220,7 +220,12 @@ Rule *Rule::create(DefinitionData &def, HighlightingContext &hctx, const Highlig
     if (rule && !rule->resolveCommon(def, ruleData, lookupContextName)) {
         rule.reset();
     }
-    return hctx.pushRule(std::move(rule));
+    auto *storedRule = hctx.pushRule(std::move(rule));
+    if (storedRule && ruleData.type == HighlightingData::Rule::Type::Keyword) {
+        // Registry keys reference rules, so only register validated, owned instances.
+        storedRule->setSkipOffsetId(hctx.nextSkipOffsetId(*static_cast<KeywordListRule *>(storedRule)));
+    }
+    return storedRule;
 }
 
 AnyChar::AnyChar(const HighlightingData::Rule::AnyChar &data)
@@ -484,7 +489,7 @@ MatchResult Int::doMatch(QStringView text, int offset, const QStringList &, High
     return offset;
 }
 
-Rule::Ptr KeywordListRule::create(HighlightingContext &hctx, DefinitionData &def, const HighlightingData::Rule::Keyword &data, QStringView lookupContextName)
+Rule::Ptr KeywordListRule::create(DefinitionData &def, const HighlightingData::Rule::Keyword &data, QStringView lookupContextName)
 {
     /**
      * get our keyword list, if not found => bail out
@@ -507,16 +512,25 @@ Rule::Ptr KeywordListRule::create(HighlightingContext &hctx, DefinitionData &def
         keywordList->initLookupForCaseSensitivity(data.caseSensitivityOverride);
     }
 
-    return std::make_unique<KeywordListRule>(hctx, *keywordList, def, data);
+    return std::make_unique<KeywordListRule>(*keywordList, def, data);
 }
 
-KeywordListRule::KeywordListRule(HighlightingContext &hctx, const KeywordList &keywordList, DefinitionData &def, const HighlightingData::Rule::Keyword &data)
+size_t KSyntaxHighlighting::KeywordListRule::hashKeywordList(size_t seed) const
+{
+    return qHashMulti(seed, m_caseSensitivity, &m_keywordList, m_wordDelimiters);
+}
+
+bool KSyntaxHighlighting::KeywordListRule::isEqualKeywordList(const KeywordListRule &other) const
+{
+    return m_caseSensitivity == other.m_caseSensitivity && &m_keywordList == &other.m_keywordList && m_wordDelimiters == other.m_wordDelimiters;
+}
+
+KeywordListRule::KeywordListRule(const KeywordList &keywordList, DefinitionData &def, const HighlightingData::Rule::Keyword &data)
     : m_wordDelimiters(def.wordDelimiters)
     , m_keywordList(keywordList)
     , m_caseSensitivity(data.hasCaseSensitivityOverride ? data.caseSensitivityOverride : keywordList.caseSensitivity())
 {
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
-    setSkipOffsetId(hctx.nextSkipOffsetId());
 }
 
 MatchResult KeywordListRule::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
