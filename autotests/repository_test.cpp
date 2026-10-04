@@ -16,6 +16,7 @@
 
 #include <QFileInfo>
 #include <QPalette>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
@@ -489,6 +490,63 @@ private Q_SLOTS:
         klist = def.keywordList(QLatin1String("f"));
         QCOMPARE(klist.size(), 1);
         QVERIFY(klist.contains(QLatin1String("f")));
+    }
+
+    void testRejectedKeywordRule()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(QDir(dir.path()).mkpath(QLatin1String("syntax")));
+        {
+            const QByteArray syntax = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<language name="Rejected Keyword Test" version="1" kateversion="6.0" section="Other" extensions="*.rejected-keyword">
+  <highlighting>
+    <list name="words"><item>foo</item></list>
+    <contexts>
+      <context name="Normal" attribute="Normal" lineEndContext="#stay">
+        <keyword String="words" attribute="Keyword" lookAhead="true" context="#stay"/>
+        <keyword String="words" attribute="Keyword" column="1" context="#stay"/>
+        <keyword String="words" attribute="Keyword" context="#stay"/>
+      </context>
+    </contexts>
+    <itemDatas>
+      <itemData name="Normal" defStyleNum="dsNormal"/>
+      <itemData name="Keyword" defStyleNum="dsKeyword"/>
+    </itemDatas>
+  </highlighting>
+</language>)xml";
+            QFile file(dir.filePath(QLatin1String("syntax/rejected.xml")));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QCOMPARE(file.write(syntax), syntax.size());
+        }
+
+        class KeywordHighlighter : public AbstractHighlighter
+        {
+        public:
+            using AbstractHighlighter::highlightLine;
+            QStringList formats;
+            void applyFormat(int, int, const Format &format) override
+            {
+                formats.push_back(format.name());
+            }
+        };
+
+        Repository repo;
+        repo.addCustomSearchPath(dir.path());
+        KeywordHighlighter highlighter;
+        for (int pass = 0; pass < 2; ++pass) {
+            auto def = repo.definitionForName(QLatin1String("Rejected Keyword Test"));
+            QVERIFY(def.isValid());
+            highlighter.setDefinition(def);
+            highlighter.formats.clear();
+            // The look-ahead #stay rule is discarded; the two accepted rules still share a keyword list.
+            highlighter.highlightLine(u"foo", State());
+            QCOMPARE(highlighter.formats, QStringList{QStringLiteral("Keyword")});
+            highlighter.formats.clear();
+            highlighter.highlightLine(u"foobar", State());
+            QCOMPARE(highlighter.formats, QStringList{QStringLiteral("Normal")});
+            repo.reload();
+        }
     }
 
     void testKeywordListModification()
