@@ -593,7 +593,7 @@ void DefinitionData::resolveContexts()
     contexts.reserve(contextDatas.size());
 
     /**
-     * Transform all HighlightingContextData to Context.
+     * Transform all HighlightingData to Context.
      * This is necessary so that Context::resolveContexts() can find the referenced contexts.
      */
     for (const auto &contextData : std::as_const(contextDatas)) {
@@ -604,8 +604,9 @@ void DefinitionData::resolveContexts()
      * Resolves contexts and rules.
      */
     auto ctxIt = contexts.begin();
+    auto &highlightingContext = RepositoryPrivate::get(repo)->m_highlightingContext;
     for (const auto &contextData : std::as_const(contextDatas)) {
-        ctxIt->resolveContexts(*this, contextData);
+        ctxIt->resolveContexts(*this, highlightingContext, contextData);
         ++ctxIt;
     }
 

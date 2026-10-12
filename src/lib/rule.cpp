@@ -9,18 +9,14 @@
 #include "context_p.h"
 #include "definition_p.h"
 #include "dynamicregexpcache_p.h"
+#include "highlightingcontext_p.hpp"
+#include "isdigit_p.hpp"
 #include "ksyntaxhighlighting_logging.h"
 #include "rule_p.h"
 #include "worddelimiters_p.h"
 #include "xml_p.h"
 
 using namespace KSyntaxHighlighting;
-
-// QChar::isDigit() match any digit in unicode (romain numeral, etc)
-static bool isDigit(QChar c)
-{
-    return (c <= QLatin1Char('9') && QLatin1Char('0') <= c);
-}
 
 static bool isOctalChar(QChar c)
 {
@@ -103,7 +99,7 @@ static MatchResult matchString(QStringView pattern, QStringView text, int offset
     return offset;
 }
 
-static void resolveAdditionalWordDelimiters(WordDelimiters &wordDelimiters, const HighlightingContextData::Rule::WordDelimiters &delimiters)
+static void resolveAdditionalWordDelimiters(WordDelimiters &wordDelimiters, const HighlightingData::Rule::WordDelimiters &delimiters)
 {
     // cache for DefinitionData::wordDelimiters, is accessed VERY often
     if (!delimiters.additionalDeliminator.isEmpty() || !delimiters.weakDeliminator.isEmpty()) {
@@ -122,14 +118,14 @@ const IncludeRules *Rule::castToIncludeRules() const
     return static_cast<const IncludeRules *>(this);
 }
 
-bool Rule::resolveCommon(DefinitionData &def, const HighlightingContextData::Rule &ruleData, QStringView lookupContextName)
+bool Rule::resolveCommon(DefinitionData &def, const HighlightingData::Rule &ruleData, QStringView lookupContextName)
 {
     switch (ruleData.type) {
     // IncludeRules uses this with a different semantic
-    case HighlightingContextData::Rule::Type::IncludeRules:
+    case HighlightingData::Rule::Type::IncludeRules:
         m_type = Type::IncludeRules;
         return true;
-    case HighlightingContextData::Rule::Type::LineContinue:
+    case HighlightingData::Rule::Type::LineContinue:
         m_type = Type::LineContinue;
         break;
     default:
@@ -163,54 +159,54 @@ bool Rule::resolveCommon(DefinitionData &def, const HighlightingContextData::Rul
     return !(m_lookAhead && m_context.isStay());
 }
 
-static Rule::Ptr createRule(DefinitionData &def, const HighlightingContextData::Rule &ruleData, QStringView lookupContextName)
+static Rule::Ptr createRule(DefinitionData &def, HighlightingContext &hctx, const HighlightingData::Rule &ruleData, QStringView lookupContextName)
 {
-    using Type = HighlightingContextData::Rule::Type;
+    using Type = HighlightingData::Rule::Type;
 
     switch (ruleData.type) {
     case Type::AnyChar:
-        return std::make_shared<AnyChar>(ruleData.data.anyChar);
+        return std::make_unique<AnyChar>(ruleData.data.anyChar);
     case Type::DetectChar:
-        return std::make_shared<DetectChar>(ruleData.data.detectChar);
+        return std::make_unique<DetectChar>(ruleData.data.detectChar);
     case Type::Detect2Chars:
-        return std::make_shared<Detect2Chars>(ruleData.data.detect2Chars);
+        return std::make_unique<Detect2Chars>(ruleData.data.detect2Chars);
     case Type::IncludeRules:
-        return std::make_shared<IncludeRules>(ruleData.data.includeRules);
+        return std::make_unique<IncludeRules>(ruleData.data.includeRules);
     case Type::Int:
-        return std::make_shared<Int>(def, ruleData.data.detectInt);
+        return std::make_unique<Int>(def, ruleData.data.detectInt);
     case Type::Keyword:
-        return KeywordListRule::create(def, ruleData.data.keyword, lookupContextName);
+        return KeywordListRule::create(hctx, def, ruleData.data.keyword, lookupContextName);
     case Type::LineContinue:
-        return std::make_shared<LineContinue>(ruleData.data.lineContinue);
+        return std::make_unique<LineContinue>(ruleData.data.lineContinue);
     case Type::RangeDetect:
-        return std::make_shared<RangeDetect>(ruleData.data.rangeDetect);
+        return std::make_unique<RangeDetect>(ruleData.data.rangeDetect);
     case Type::RegExpr:
         if (!ruleData.data.regExpr.dynamic) {
-            return std::make_shared<RegExpr>(ruleData.data.regExpr);
+            return std::make_unique<RegExpr>(hctx, ruleData.data.regExpr);
         } else {
-            return std::make_shared<DynamicRegExpr>(ruleData.data.regExpr);
+            return std::make_unique<DynamicRegExpr>(hctx, ruleData.data.regExpr);
         }
     case Type::StringDetect:
         if (ruleData.data.stringDetect.dynamic) {
-            return std::make_shared<DynamicStringDetect>(ruleData.data.stringDetect);
+            return std::make_unique<DynamicStringDetect>(ruleData.data.stringDetect);
         }
-        return std::make_shared<StringDetect>(ruleData.data.stringDetect);
+        return std::make_unique<StringDetect>(ruleData.data.stringDetect);
     case Type::WordDetect:
-        return std::make_shared<WordDetect>(def, ruleData.data.wordDetect);
+        return std::make_unique<WordDetect>(def, ruleData.data.wordDetect);
     case Type::Float:
-        return std::make_shared<Float>(def, ruleData.data.detectFloat);
+        return std::make_unique<Float>(def, ruleData.data.detectFloat);
     case Type::HlCOct:
-        return std::make_shared<HlCOct>(def, ruleData.data.hlCOct);
+        return std::make_unique<HlCOct>(def, ruleData.data.hlCOct);
     case Type::HlCStringChar:
-        return std::make_shared<HlCStringChar>();
+        return std::make_unique<HlCStringChar>();
     case Type::DetectIdentifier:
-        return std::make_shared<DetectIdentifier>();
+        return std::make_unique<DetectIdentifier>();
     case Type::DetectSpaces:
-        return std::make_shared<DetectSpaces>();
+        return std::make_unique<DetectSpaces>();
     case Type::HlCChar:
-        return std::make_shared<HlCChar>();
+        return std::make_unique<HlCChar>();
     case Type::HlCHex:
-        return std::make_shared<HlCHex>(def, ruleData.data.hlCHex);
+        return std::make_unique<HlCHex>(def, ruleData.data.hlCHex);
 
     case Type::Unknown:;
     }
@@ -218,21 +214,21 @@ static Rule::Ptr createRule(DefinitionData &def, const HighlightingContextData::
     return Rule::Ptr(nullptr);
 }
 
-Rule::Ptr Rule::create(DefinitionData &def, const HighlightingContextData::Rule &ruleData, QStringView lookupContextName)
+Rule *Rule::create(DefinitionData &def, HighlightingContext &hctx, const HighlightingData::Rule &ruleData, QStringView lookupContextName)
 {
-    auto rule = createRule(def, ruleData, lookupContextName);
+    auto rule = createRule(def, hctx, ruleData, lookupContextName);
     if (rule && !rule->resolveCommon(def, ruleData, lookupContextName)) {
         rule.reset();
     }
-    return rule;
+    return hctx.pushRule(std::move(rule));
 }
 
-AnyChar::AnyChar(const HighlightingContextData::Rule::AnyChar &data)
+AnyChar::AnyChar(const HighlightingData::Rule::AnyChar &data)
     : m_chars(data.chars)
 {
 }
 
-MatchResult AnyChar::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult AnyChar::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (m_chars.contains(text.at(offset))) {
         return offset + 1;
@@ -240,14 +236,14 @@ MatchResult AnyChar::doMatch(QStringView text, int offset, const QStringList &, 
     return offset;
 }
 
-DetectChar::DetectChar(const HighlightingContextData::Rule::DetectChar &data)
+DetectChar::DetectChar(const HighlightingData::Rule::DetectChar &data)
     : m_char(data.char1)
     , m_captureIndex((data.dynamic ? data.char1.digitValue() : 0) - 1)
 {
     m_dynamic = data.dynamic;
 }
 
-MatchResult DetectChar::doMatch(QStringView text, int offset, const QStringList &captures, DynamicRegexpCache &) const
+MatchResult DetectChar::doMatch(QStringView text, int offset, const QStringList &captures, HighlightingContext &) const
 {
     if (m_dynamic) {
         if (m_captureIndex == -1 || captures.size() <= m_captureIndex || captures.at(m_captureIndex).isEmpty()) {
@@ -265,13 +261,13 @@ MatchResult DetectChar::doMatch(QStringView text, int offset, const QStringList 
     return offset;
 }
 
-Detect2Chars::Detect2Chars(const HighlightingContextData::Rule::Detect2Chars &data)
+Detect2Chars::Detect2Chars(const HighlightingData::Rule::Detect2Chars &data)
     : m_char1(data.char1)
     , m_char2(data.char2)
 {
 }
 
-MatchResult Detect2Chars::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult Detect2Chars::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (text.size() - offset < 2) {
         return offset;
@@ -282,7 +278,7 @@ MatchResult Detect2Chars::doMatch(QStringView text, int offset, const QStringLis
     return offset;
 }
 
-MatchResult DetectIdentifier::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult DetectIdentifier::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (!text.at(offset).isLetter() && text.at(offset) != QLatin1Char('_')) {
         return offset;
@@ -298,7 +294,7 @@ MatchResult DetectIdentifier::doMatch(QStringView text, int offset, const QStrin
     return text.size();
 }
 
-MatchResult DetectSpaces::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult DetectSpaces::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     while (offset < text.size() && text.at(offset).isSpace()) {
         ++offset;
@@ -306,13 +302,13 @@ MatchResult DetectSpaces::doMatch(QStringView text, int offset, const QStringLis
     return offset;
 }
 
-Float::Float(DefinitionData &def, const HighlightingContextData::Rule::Float &data)
+Float::Float(DefinitionData &def, const HighlightingData::Rule::Float &data)
     : m_wordDelimiters(def.wordDelimiters)
 {
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
 }
 
-MatchResult Float::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult Float::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (offset > 0 && !m_wordDelimiters.contains(text.at(offset - 1))) {
         return offset;
@@ -357,7 +353,7 @@ MatchResult Float::doMatch(QStringView text, int offset, const QStringList &, Dy
     return expOffset;
 }
 
-MatchResult HlCChar::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult HlCChar::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (text.size() < offset + 3) {
         return offset;
@@ -386,13 +382,13 @@ MatchResult HlCChar::doMatch(QStringView text, int offset, const QStringList &, 
     return offset;
 }
 
-HlCHex::HlCHex(DefinitionData &def, const HighlightingContextData::Rule::HlCHex &data)
+HlCHex::HlCHex(DefinitionData &def, const HighlightingData::Rule::HlCHex &data)
     : m_wordDelimiters(def.wordDelimiters)
 {
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
 }
 
-MatchResult HlCHex::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult HlCHex::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (offset > 0 && !m_wordDelimiters.contains(text.at(offset - 1))) {
         return offset;
@@ -420,13 +416,13 @@ MatchResult HlCHex::doMatch(QStringView text, int offset, const QStringList &, D
     return offset;
 }
 
-HlCOct::HlCOct(DefinitionData &def, const HighlightingContextData::Rule::HlCOct &data)
+HlCOct::HlCOct(DefinitionData &def, const HighlightingData::Rule::HlCOct &data)
     : m_wordDelimiters(def.wordDelimiters)
 {
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
 }
 
-MatchResult HlCOct::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult HlCOct::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (offset > 0 && !m_wordDelimiters.contains(text.at(offset - 1))) {
         return offset;
@@ -452,31 +448,31 @@ MatchResult HlCOct::doMatch(QStringView text, int offset, const QStringList &, D
     return offset;
 }
 
-MatchResult HlCStringChar::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult HlCStringChar::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     return matchEscapedChar(text, offset);
 }
 
-IncludeRules::IncludeRules(const HighlightingContextData::Rule::IncludeRules &data)
+IncludeRules::IncludeRules(const HighlightingData::Rule::IncludeRules &data)
     : m_contextName(data.contextName)
     , m_includeAttribute(data.includeAttribute)
 {
 }
 
-MatchResult IncludeRules::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult IncludeRules::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     Q_UNUSED(text);
     qCWarning(Log) << "Unresolved include rule";
     return offset;
 }
 
-Int::Int(DefinitionData &def, const HighlightingContextData::Rule::Int &data)
+Int::Int(DefinitionData &def, const HighlightingData::Rule::Int &data)
     : m_wordDelimiters(def.wordDelimiters)
 {
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
 }
 
-MatchResult Int::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult Int::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (offset > 0 && !m_wordDelimiters.contains(text.at(offset - 1))) {
         return offset;
@@ -488,7 +484,7 @@ MatchResult Int::doMatch(QStringView text, int offset, const QStringList &, Dyna
     return offset;
 }
 
-Rule::Ptr KeywordListRule::create(DefinitionData &def, const HighlightingContextData::Rule::Keyword &data, QStringView lookupContextName)
+Rule::Ptr KeywordListRule::create(HighlightingContext &hctx, DefinitionData &def, const HighlightingData::Rule::Keyword &data, QStringView lookupContextName)
 {
     /**
      * get our keyword list, if not found => bail out
@@ -511,19 +507,29 @@ Rule::Ptr KeywordListRule::create(DefinitionData &def, const HighlightingContext
         keywordList->initLookupForCaseSensitivity(data.caseSensitivityOverride);
     }
 
-    return std::make_shared<KeywordListRule>(*keywordList, def, data);
+    return std::make_unique<KeywordListRule>(hctx, *keywordList, def, data);
 }
 
-KeywordListRule::KeywordListRule(const KeywordList &keywordList, DefinitionData &def, const HighlightingContextData::Rule::Keyword &data)
+size_t KSyntaxHighlighting::KeywordListRule::hashKeywordList(size_t seed) const
+{
+    return qHashMulti(seed, m_caseSensitivity, &m_keywordList, m_wordDelimiters);
+}
+
+bool KSyntaxHighlighting::KeywordListRule::isEqualKeywordList(const KeywordListRule &other) const
+{
+    return m_caseSensitivity == other.m_caseSensitivity && &m_keywordList == &other.m_keywordList && m_wordDelimiters == other.m_wordDelimiters;
+}
+
+KeywordListRule::KeywordListRule(HighlightingContext &hctx, const KeywordList &keywordList, DefinitionData &def, const HighlightingData::Rule::Keyword &data)
     : m_wordDelimiters(def.wordDelimiters)
     , m_keywordList(keywordList)
     , m_caseSensitivity(data.hasCaseSensitivityOverride ? data.caseSensitivityOverride : keywordList.caseSensitivity())
 {
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
-    m_hasSkipOffset = true;
+    setSkipOffsetId(hctx.nextSkipOffsetId(*this));
 }
 
-MatchResult KeywordListRule::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult KeywordListRule::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     auto newOffset = offset;
     while (text.size() > newOffset && !m_wordDelimiters.contains(text.at(newOffset))) {
@@ -541,12 +547,12 @@ MatchResult KeywordListRule::doMatch(QStringView text, int offset, const QString
     return MatchResult(offset, newOffset);
 }
 
-LineContinue::LineContinue(const HighlightingContextData::Rule::LineContinue &data)
+LineContinue::LineContinue(const HighlightingData::Rule::LineContinue &data)
     : m_char(data.char1)
 {
 }
 
-MatchResult LineContinue::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult LineContinue::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (offset == text.size() - 1 && text.at(offset) == m_char) {
         return offset + 1;
@@ -554,13 +560,13 @@ MatchResult LineContinue::doMatch(QStringView text, int offset, const QStringLis
     return offset;
 }
 
-RangeDetect::RangeDetect(const HighlightingContextData::Rule::RangeDetect &data)
+RangeDetect::RangeDetect(const HighlightingData::Rule::RangeDetect &data)
     : m_begin(data.begin)
     , m_end(data.end)
 {
 }
 
-MatchResult RangeDetect::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult RangeDetect::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (text.size() - offset < 2) {
         return offset;
@@ -579,7 +585,7 @@ MatchResult RangeDetect::doMatch(QStringView text, int offset, const QStringList
     return offset;
 }
 
-static QRegularExpression::PatternOptions makePattenOptions(const HighlightingContextData::Rule::RegExpr &data)
+static QRegularExpression::PatternOptions makePattenOptions(const HighlightingData::Rule::RegExpr &data)
 {
     return (data.isMinimal ? QRegularExpression::InvertedGreedinessOption : QRegularExpression::NoPatternOption)
         | (data.caseSensitivity == Qt::CaseInsensitive ? QRegularExpression::CaseInsensitiveOption : QRegularExpression::NoPatternOption)
@@ -589,7 +595,8 @@ static QRegularExpression::PatternOptions makePattenOptions(const HighlightingCo
         | QRegularExpression::UseUnicodePropertiesOption;
 }
 
-static void resolveRegex(QRegularExpression &regexp, const ContextSwitch::ContextList &contexts)
+template<class RegexpUpdater>
+static void resolveRegex(QRegularExpression &regexp, const ContextSwitch::ContextList &contexts, RegexpUpdater regexpUpdater)
 {
     bool enableCapture = false;
     for (auto *context : contexts) {
@@ -602,7 +609,8 @@ static void resolveRegex(QRegularExpression &regexp, const ContextSwitch::Contex
     // disable DontCaptureOption when reference a context with dynamic rule or
     // with invalid regex because DontCaptureOption with back reference capture is an error
     if (enableCapture || !regexp.isValid()) {
-        regexp.setPatternOptions(regexp.patternOptions() & ~QRegularExpression::DontCaptureOption);
+        auto options = regexp.patternOptions() & ~QRegularExpression::DontCaptureOption;
+        regexpUpdater(options);
     }
 
     if (!regexp.isValid()) {
@@ -645,34 +653,44 @@ static MatchResult regexMatch(const QRegularExpression &regexp, QStringView text
     return MatchResult(offset, result.capturedStart());
 }
 
-RegExpr::RegExpr(const HighlightingContextData::Rule::RegExpr &data)
-    : m_regexp(data.pattern, makePattenOptions(data))
+RegExpr::RegExpr(HighlightingContext &hctx, const HighlightingData::Rule::RegExpr &data)
+    // this lambda avoids calling the default constructor of QRegularExpression
+    // which makes an unnecessary dynamic allocation
+    : m_regexp([&] {
+        auto &regexpAndSkipOffsetId = hctx.registryRegexp(data.pattern, makePattenOptions(data));
+        setSkipOffsetId(regexpAndSkipOffsetId.skipOffsetId);
+        return regexpAndSkipOffsetId.regexp;
+    }())
 {
-    m_hasSkipOffset = true;
 }
 
-void RegExpr::resolve()
+void RegExpr::resolve(HighlightingContext &hctx)
 {
     m_isResolved = true;
 
-    resolveRegex(m_regexp, context().contexts());
+    resolveRegex(m_regexp, context().contexts(), [&](QRegularExpression::PatternOptions options) {
+        // note that it is not necessary to modify the id since activating capture
+        // has no influence on the MatchResult::offset().
+        // i.e. regexes with or without DontCaptureOption can share the same id.
+        m_regexp = hctx.registryRegexp(m_regexp.pattern(), options).regexp;
+    });
 }
 
-MatchResult RegExpr::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult RegExpr::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &hctx) const
 {
     if (Q_UNLIKELY(!m_isResolved)) {
-        const_cast<RegExpr *>(this)->resolve();
+        const_cast<RegExpr *>(this)->resolve(hctx);
     }
 
     return regexMatch(m_regexp, text, offset);
 }
 
-DynamicRegExpr::DynamicRegExpr(const HighlightingContextData::Rule::RegExpr &data)
+DynamicRegExpr::DynamicRegExpr(HighlightingContext &hctx, const HighlightingData::Rule::RegExpr &data)
     : m_pattern(data.pattern)
     , m_patternOptions(makePattenOptions(data))
 {
     m_dynamic = true;
-    m_hasSkipOffset = true;
+    setSkipOffsetId(hctx.nextSkipOffsetId());
 }
 
 void DynamicRegExpr::resolve()
@@ -680,11 +698,13 @@ void DynamicRegExpr::resolve()
     m_isResolved = true;
 
     QRegularExpression regexp(m_pattern, m_patternOptions);
-    resolveRegex(regexp, context().contexts());
+    resolveRegex(regexp, context().contexts(), [&](QRegularExpression::PatternOptions options) {
+        regexp.setPatternOptions(options);
+    });
     m_patternOptions = regexp.patternOptions();
 }
 
-MatchResult DynamicRegExpr::doMatch(QStringView text, int offset, const QStringList &captures, DynamicRegexpCache &dynamicRegexpCache) const
+MatchResult DynamicRegExpr::doMatch(QStringView text, int offset, const QStringList &captures, HighlightingContext &hctx) const
 {
     if (Q_UNLIKELY(!m_isResolved)) {
         const_cast<DynamicRegExpr *>(this)->resolve();
@@ -694,29 +714,29 @@ MatchResult DynamicRegExpr::doMatch(QStringView text, int offset, const QStringL
      * create new pattern with right instantiation
      */
     auto pattern = replaceCaptures(m_pattern, captures, true);
-    auto &regexp = dynamicRegexpCache.compileRegexp(std::move(pattern), m_patternOptions);
+    auto &regexp = hctx.dynamicRegexpCache.compileRegexp(std::move(pattern), m_patternOptions);
     return regexMatch(regexp, text, offset);
 }
 
-StringDetect::StringDetect(const HighlightingContextData::Rule::StringDetect &data)
+StringDetect::StringDetect(const HighlightingData::Rule::StringDetect &data)
     : m_string(data.string)
     , m_caseSensitivity(data.caseSensitivity)
 {
 }
 
-MatchResult StringDetect::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult StringDetect::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     return matchString(m_string, text, offset, m_caseSensitivity);
 }
 
-DynamicStringDetect::DynamicStringDetect(const HighlightingContextData::Rule::StringDetect &data)
+DynamicStringDetect::DynamicStringDetect(const HighlightingData::Rule::StringDetect &data)
     : m_string(data.string)
     , m_caseSensitivity(data.caseSensitivity)
 {
     m_dynamic = true;
 }
 
-MatchResult DynamicStringDetect::doMatch(QStringView text, int offset, const QStringList &captures, DynamicRegexpCache &) const
+MatchResult DynamicStringDetect::doMatch(QStringView text, int offset, const QStringList &captures, HighlightingContext &) const
 {
     /**
      * for dynamic case: create new pattern with right instantiation
@@ -725,7 +745,7 @@ MatchResult DynamicStringDetect::doMatch(QStringView text, int offset, const QSt
     return matchString(pattern, text, offset, m_caseSensitivity);
 }
 
-WordDetect::WordDetect(DefinitionData &def, const HighlightingContextData::Rule::WordDetect &data)
+WordDetect::WordDetect(DefinitionData &def, const HighlightingData::Rule::WordDetect &data)
     : m_wordDelimiters(def.wordDelimiters)
     , m_word(data.word)
     , m_caseSensitivity(data.caseSensitivity)
@@ -733,7 +753,7 @@ WordDetect::WordDetect(DefinitionData &def, const HighlightingContextData::Rule:
     resolveAdditionalWordDelimiters(m_wordDelimiters, data.wordDelimiters);
 }
 
-MatchResult WordDetect::doMatch(QStringView text, int offset, const QStringList &, DynamicRegexpCache &) const
+MatchResult WordDetect::doMatch(QStringView text, int offset, const QStringList &, HighlightingContext &) const
 {
     if (text.size() - offset < m_word.size()) {
         return offset;

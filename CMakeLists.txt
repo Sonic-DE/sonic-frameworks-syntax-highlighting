@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.29)
+cmake_minimum_required(VERSION 3.30)
 
 set(KF_VERSION "6.30.0")
 project(KSyntaxHighlighting VERSION ${KF_VERSION})
@@ -26,6 +26,7 @@ include(ECMGenerateExportHeader)
 include(ECMDeprecationSettings)
 include(ECMQmlModule)
 include(ECMGenerateQDoc)
+include(ECMInstalledLibraryCheck)
 
 set(ksyntaxhighlighting_version_header "${CMAKE_CURRENT_BINARY_DIR}/src/lib/ksyntaxhighlighting_version.h")
 ecm_setup_version(PROJECT
@@ -40,7 +41,7 @@ set(EXCLUDE_DEPRECATED_BEFORE_AND_AT 0 CACHE STRING "Control the range of deprec
 #
 # Dependencies
 #
-set(REQUIRED_QT_VERSION 6.9.0)
+set(REQUIRED_QT_VERSION 6.10.0)
 find_package(Qt6 ${REQUIRED_QT_VERSION} NO_MODULE REQUIRED COMPONENTS Core Network Test)
 option(KSYNTAXHIGHLIGHTING_USE_GUI "Build components depending on QtGui" ON)
 if(KSYNTAXHIGHLIGHTING_USE_GUI)
